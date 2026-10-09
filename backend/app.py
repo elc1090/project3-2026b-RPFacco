@@ -1,9 +1,11 @@
 import os
 import sqlite3
+from datetime import datetime, timedelta, timezone
 
+import jwt
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from werkzeug.security import generate_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "app.db")
@@ -66,6 +68,68 @@ def register():
         conn.close()
 
     return jsonify({"id": user_id, "email": email}), 201
+
+@app.post("/api/login")
+def login():
+    data = request.get_json(silent=True) or {}
+
+    email = str(data.get("email") or "").strip().lower()
+    password = data.get("password")
+
+    if not email or type(password) is not str:
+        return jsonify({"error": "Email ou senha incorretos"}), 401
+
+    conn = get_db()
+    user = conn.execute(
+        "SELECT id, email, password_hash FROM users WHERE email = ?",
+        (email,),
+    ).fetchone()
+    conn.close()
+
+    if user is None or not check_password_hash(user["password_hash"], password):
+        return jsonify({"error": "Email ou senha incorretos"}), 401
+
+    token = jwt.encode(
+        {
+            "sub": str(user["id"]),
+            "exp": datetime.now(timezone.utc) + timedelta(hours=24),
+        },
+        SECRET_KEY,
+        algorithm="HS256",
+    )
+
+    return jsonify({"token": token})
+
+def current_user_id():
+    header = request.headers.get("Authorization", "")
+    if not header.startswith("Bearer "):
+        return None
+
+    token = header[len("Bearer "):]
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+    except jwt.InvalidTokenError:
+        return None
+
+    return int(payload["sub"])
+
+@app.get("/api/me")
+def me():
+    user_id = current_user_id()
+    if user_id is None:
+        return jsonify({"error": "Não autenticado"}), 401
+
+    conn = get_db()
+    user = conn.execute(
+        "SELECT id, email, created_at FROM users WHERE id = ?",
+        (user_id,),
+    ).fetchone()
+    conn.close()
+
+    if user is None:
+        return jsonify({"error": "Não autenticado"}), 401
+
+    return jsonify(dict(user))
 
 if __name__ == "__main__":
     app.run(debug=True)
