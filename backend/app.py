@@ -3,8 +3,9 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 
 import jwt
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
+from flask_swagger_ui import get_swaggerui_blueprint
 from werkzeug.security import check_password_hash, generate_password_hash
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -19,8 +20,12 @@ ALLOWED_ORIGINS = [
     "http://127.0.0.1:8000",
 ]
 
+DOCS_URL = "/api/docs"
+OPENAPI_URL = "/api/openapi.yaml"
+
 app = Flask(__name__)
 CORS(app, origins=ALLOWED_ORIGINS)
+app.register_blueprint(get_swaggerui_blueprint(DOCS_URL, OPENAPI_URL), url_prefix=DOCS_URL)
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
@@ -38,6 +43,10 @@ init_db()
 @app.get("/api/health")
 def health():
     return jsonify({"status": "ok"})
+
+@app.get(OPENAPI_URL)
+def openapi():
+    return send_from_directory(BASE_DIR, "openapi.yaml", mimetype="text/yaml")
 
 @app.post("/api/register")
 def register():

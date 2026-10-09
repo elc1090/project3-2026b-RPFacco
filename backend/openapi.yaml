@@ -1,0 +1,141 @@
+openapi: 3.0.3
+info:
+  title: Projeto 3 - API de panorâmicas 360°
+  version: 0.1.0
+  description: Backend autenticado para geração de imagens panorâmicas 360° por stitching.
+tags:
+  - name: Sistema
+  - name: Autenticação
+paths:
+  /api/health:
+    get:
+      tags: [Sistema]
+      summary: Verifica se o servidor está no ar
+      responses:
+        "200":
+          description: Servidor no ar
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+  /api/register:
+    post:
+      tags: [Autenticação]
+      summary: Cadastra um usuário
+      description: A senha precisa ter pelo menos 8 caracteres.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Credentials"
+      responses:
+        "201":
+          description: Usuário criado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    example: 1
+                  email:
+                    type: string
+                    example: teste@teste.com
+        "400":
+          description: Email inválido ou senha curta
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Email já cadastrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/login:
+    post:
+      tags: [Autenticação]
+      summary: Faz login e devolve o token
+      description: Copie o valor de `token` da resposta e cole no botão Authorize para usar as rotas protegidas.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Credentials"
+      responses:
+        "200":
+          description: Login aceito
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+        "401":
+          description: Email ou senha incorretos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/me:
+    get:
+      tags: [Autenticação]
+      summary: Devolve o usuário logado
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Usuário dono do token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Token ausente, inválido ou vencido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Credentials:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          example: teste@teste.com
+        password:
+          type: string
+          example: "12345678"
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        email:
+          type: string
+          example: teste@teste.com
+        created_at:
+          type: string
+          example: "2026-10-09 21:36:26"
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
