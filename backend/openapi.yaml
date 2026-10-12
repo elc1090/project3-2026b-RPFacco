@@ -6,6 +6,7 @@ info:
 tags:
   - name: Sistema
   - name: Autenticação
+  - name: Panorâmicas
 paths:
   /api/health:
     get:
@@ -105,6 +106,45 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/panoramas:
+    post:
+      tags: [Panorâmicas]
+      summary: Envia o ZIP de uma captura
+      description: Recebe o `360_photos.zip` exportado pelo app de captura e registra a panorâmica como pendente.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "201":
+          description: ZIP recebido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Panorama"
+        "400":
+          description: Arquivo ausente ou que não é um ZIP
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Token ausente, inválido ou vencido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "413":
+          description: Arquivo maior que 300 MB
 components:
   securitySchemes:
     bearerAuth:
@@ -134,6 +174,15 @@ components:
         created_at:
           type: string
           example: "2026-10-09 21:36:26"
+    Panorama:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        status:
+          type: string
+          example: pending
     Error:
       type: object
       properties:
