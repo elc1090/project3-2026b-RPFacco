@@ -178,5 +178,25 @@ def create_panorama():
 
     return jsonify({"id": panorama_id, "status": "pending"}), 201
 
+@app.get("/api/panoramas")
+def list_panoramas():
+    user_id = current_user_id()
+    if user_id is None:
+        return jsonify({"error": "Não autenticado"}), 401
+
+    conn = get_db()
+    rows = conn.execute(
+        """
+        SELECT id, status, created_at
+        FROM panoramas
+        WHERE user_id = ?
+        ORDER BY id DESC
+        """,
+        (user_id,),
+    ).fetchall()
+    conn.close()
+
+    return jsonify([dict(row) for row in rows])
+
 if __name__ == "__main__":
     app.run(debug=True)
