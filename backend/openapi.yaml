@@ -166,6 +166,46 @@ paths:
                 $ref: "#/components/schemas/Error"
         "413":
           description: Arquivo maior que 300 MB
+  /api/panoramas/{id}/image:
+    get:
+      tags: [Panorâmicas]
+      summary: Devolve a imagem de uma panorâmica pronta
+      description: JPEG equiretangular de 4096×2048. Só o dono da panorâmica consegue baixar.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            example: 1
+      responses:
+        "200":
+          description: Imagem da panorâmica
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+        "401":
+          description: Token ausente, inválido ou vencido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Panorâmica não existe, é de outro usuário ou o arquivo sumiu
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Panorâmica ainda não está pronta (pendente, processando ou falhou)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 components:
   securitySchemes:
     bearerAuth:
