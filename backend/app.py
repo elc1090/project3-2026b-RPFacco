@@ -198,5 +198,30 @@ def list_panoramas():
 
     return jsonify([dict(row) for row in rows])
 
+@app.get("/api/panoramas/<int:panorama_id>/image")
+def panorama_image(panorama_id):
+    user_id = current_user_id()
+    if user_id is None:
+        return jsonify({"error": "Não autenticado"}), 401
+
+    conn = get_db()
+    panorama = conn.execute(
+        "SELECT status FROM panoramas WHERE id = ? AND user_id = ?",
+        (panorama_id, user_id),
+    ).fetchone()
+    conn.close()
+
+    if panorama is None:
+        return jsonify({"error": "Panorâmica não encontrada"}), 404
+
+    if panorama["status"] != "done":
+        return jsonify({"error": "A panorâmica ainda não está pronta"}), 409
+
+    folder = os.path.join(STORAGE_DIR, str(panorama_id))
+    if not os.path.exists(os.path.join(folder, "pano.jpg")):
+        return jsonify({"error": "Arquivo da panorâmica não encontrado"}), 404
+
+    return send_from_directory(folder, "pano.jpg", mimetype="image/jpeg")
+
 if __name__ == "__main__":
     app.run(debug=True)
