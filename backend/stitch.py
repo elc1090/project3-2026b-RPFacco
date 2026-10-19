@@ -8,6 +8,8 @@ import zipfile
 
 from PIL import Image, ImageOps
 
+from align import refine_poses
+
 HUGIN_IMAGE = "hugin-poc"
 PHOTO_NAME = re.compile(r"^360_photos/level_\d\d_shot_\d\d\.jpg$")
 PHOTO_EDGE = 1920
@@ -41,29 +43,37 @@ def extract_photos(folder):
 
     return metadata["photos"], names
 
-def pose_args(photos):
+def sensor_poses(photos):
     reference = next((p["rotation"]["yaw"] for p in photos if p["tilt"] == 0), 0)
 
-    values = []
-    for i, photo in enumerate(photos):
+    poses = []
+    for photo in photos:
         rotation = photo["rotation"]
         yaw = (rotation["yaw"] - reference + 180) % 360 - 180
-        values.append(f"y{i}={yaw:.4f}")
-        values.append(f"p{i}={rotation['pitch']:.4f}")
-        values.append(f"r{i}={-rotation['roll']:.4f}")
+        poses.append((yaw, rotation["pitch"], -rotation["roll"]))
+    return poses
 
+def pose_args(poses):
+    values = []
+    for i, (yaw, pitch, roll) in enumerate(poses):
+        values.append(f"y{i}={yaw:.4f}")
+        values.append(f"p{i}={pitch:.4f}")
+        values.append(f"r{i}={roll:.4f}")
     return "--set=" + ",".join(values)
 
 def stitch(folder):
     photos, names = extract_photos(folder)
     fov = photos[0]["fov"]["horizontal"]
+    project = os.path.join(folder, "project.pto")
 
     hugin(folder, "pto_gen", "-p", "0", "-f", f"{fov:.4f}", "-o", "project.pto", *names)
-    hugin(folder, "pto_var", pose_args(photos), "-o", "project.pto", "project.pto")
+    hugin(folder, "pto_var", pose_args(sensor_poses(photos)), "-o", "project.pto", "project.pto")
     hugin(
         folder, "pano_modify", "--projection=2", "--fov=360x180",
         f"--canvas={PANO_WIDTH}x{PANO_WIDTH // 2}", "-o", "project.pto", "project.pto",
     )
+    hugin(folder, "cpfind", "--prealigned", "-o", "project.pto", "project.pto")
+    hugin(folder, "pto_var", pose_args(refine_poses(project)), "-o", "project.pto", "project.pto")
     hugin(folder, "nona", "-m", "TIFF_m", "-o", "part_", "project.pto")
 
     parts = sorted(glob.glob(os.path.join(folder, "part_*.tif")))
