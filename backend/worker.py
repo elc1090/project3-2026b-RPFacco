@@ -47,8 +47,10 @@ def set_status(panorama_id, status):
 def process(panorama_id):
     print(f"Panorâmica {panorama_id}: costurando...", flush=True)
     started = time.time()
+    folder = os.path.join(STORAGE_DIR, str(panorama_id))
     try:
-        stitch(os.path.join(STORAGE_DIR, str(panorama_id)))
+        stitch(folder)
+        os.remove(os.path.join(folder, "input.zip"))
     except subprocess.CalledProcessError as error:
         print(f"Panorâmica {panorama_id}: o Hugin falhou\n{error.stderr}", flush=True)
         set_status(panorama_id, "failed")

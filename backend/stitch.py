@@ -2,6 +2,7 @@ import glob
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import zipfile
@@ -14,10 +15,14 @@ HUGIN_IMAGE = "hugin-poc"
 PHOTO_NAME = re.compile(r"^360_photos/level_\d\d_shot_\d\d\.jpg$")
 PHOTO_EDGE = 1920
 PANO_WIDTH = 4096
+THREADS = os.environ.get("HUGIN_THREADS", str(os.cpu_count()))
 
 def hugin(folder, *args):
     return subprocess.run(
-        ["docker", "run", "--rm", "-v", f"{os.path.abspath(folder)}:/work", "-w", "/work", HUGIN_IMAGE, *args],
+        [
+            "docker", "run", "--rm", "-e", f"OMP_NUM_THREADS={THREADS}",
+            "-v", f"{os.path.abspath(folder)}:/work", "-w", "/work", HUGIN_IMAGE, *args,
+        ],
         check=True, capture_output=True, text=True, timeout=600,
     )
 
@@ -72,7 +77,7 @@ def stitch(folder):
         folder, "pano_modify", "--projection=2", "--fov=360x180",
         f"--canvas={PANO_WIDTH}x{PANO_WIDTH // 2}", "-o", "project.pto", "project.pto",
     )
-    hugin(folder, "cpfind", "--prealigned", "-o", "project.pto", "project.pto")
+    hugin(folder, "cpfind", "--prealigned", f"--ncores={THREADS}", "-o", "project.pto", "project.pto")
     hugin(folder, "pto_var", pose_args(refine_poses(project)), "-o", "project.pto", "project.pto")
     hugin(folder, "nona", "-m", "TIFF_m", "-o", "part_", "project.pto")
 
@@ -85,6 +90,7 @@ def stitch(folder):
 
     for path in parts + [tif_path]:
         os.remove(path)
+    shutil.rmtree(os.path.join(folder, "photos"))
 
     return jpg_path
 
