@@ -3,13 +3,16 @@ import re
 
 import numpy as np
 
-OUTLIER_DEG = 10
+PAIR_TOLERANCE_DEG = 1.5
+PAIR_MIN_POINTS = 4
+PAIR_TRIES = 200
+SENSOR_LIMIT_DEG = 45
 POINT_SIGMA_DEG = 0.5
 SENSOR_SIGMA_DEG = 3
 NEIGHBOR_DEG = 60
 NEIGHBOR_SIGMA_DEG = 2
 MAX_STEP_DEG = 5
-ITERATIONS = 50
+ITERATIONS = 200
 
 def read_pto(path):
     images, points = [], []
@@ -76,6 +79,35 @@ def log_map(m):
 def robust_weight(residuals, sigma):
     return 1 / np.sqrt(1 + (np.linalg.norm(residuals, axis=1) / sigma) ** 2) / sigma**2
 
+def best_rotation(source, target):
+    u, _, vt = np.linalg.svd(target.T @ source)
+    fix = np.diag([1, 1, np.sign(np.linalg.det(u @ vt))])
+    return u @ fix @ vt
+
+def consistent_points(a, b, ray_a, ray_b, sensor):
+    keep = np.zeros(len(a), dtype=bool)
+    rng = np.random.default_rng(0)
+    tolerance = math.cos(math.radians(PAIR_TOLERANCE_DEG))
+    limit = math.cos(math.radians(SENSOR_LIMIT_DEG))
+    for pair in set(zip(a.tolist(), b.tolist())):
+        index = np.nonzero((a == pair[0]) & (b == pair[1]))[0]
+        if len(index) < PAIR_MIN_POINTS:
+            continue
+        best = None
+        for _ in range(PAIR_TRIES):
+            sample = rng.choice(index, 3, replace=False)
+            relative = best_rotation(ray_b[sample], ray_a[sample])
+            inliers = ((ray_b[index] @ relative.T) * ray_a[index]).sum(axis=1) >= tolerance
+            if best is None or inliers.sum() > best.sum():
+                best = inliers
+        if best.sum() < PAIR_MIN_POINTS:
+            continue
+        chosen = index[best]
+        agreement = np.einsum("ij,kj,il,kl->k", sensor[pair[0]], ray_a[chosen], sensor[pair[1]], ray_b[chosen])
+        if np.median(agreement) >= limit:
+            keep[chosen] = True
+    return keep
+
 def refine_poses(pto_path):
     images, points = read_pto(pto_path)
     n = len(images)
@@ -88,8 +120,7 @@ def refine_poses(pto_path):
     ray_a = camera_rays(images, a, np.array([p[2] for p in points]), np.array([p[3] for p in points]))
     ray_b = camera_rays(images, b, np.array([p[4] for p in points]), np.array([p[5] for p in points]))
 
-    agreement = np.einsum("kij,kj,kil,kl->k", sensor[a], ray_a, sensor[b], ray_b)
-    keep = agreement >= math.cos(math.radians(OUTLIER_DEG))
+    keep = consistent_points(a, b, ray_a, ray_b, sensor)
     a, b, ray_a, ray_b = a[keep], b[keep], ray_a[keep], ray_b[keep]
 
     axes = sensor[:, :, 2]
