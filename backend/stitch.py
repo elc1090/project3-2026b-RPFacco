@@ -14,7 +14,7 @@ from align import refine_poses
 HUGIN_IMAGE = "hugin-poc"
 PHOTO_NAME = re.compile(r"^360_photos/level_\d\d_shot_\d\d\.jpg$")
 PHOTO_EDGE = 1920
-PANO_WIDTH = 4096
+PANO_WIDTH = 8192
 THREADS = os.environ.get("HUGIN_THREADS", str(os.cpu_count()))
 
 def hugin(folder, *args):

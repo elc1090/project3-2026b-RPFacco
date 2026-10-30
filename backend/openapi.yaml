@@ -170,7 +170,7 @@ paths:
     get:
       tags: [Panorâmicas]
       summary: Devolve a imagem de uma panorâmica pronta
-      description: JPEG equiretangular de 4096×2048. Só o dono da panorâmica consegue baixar.
+      description: JPEG equiretangular de 8192×4096. Só o dono da panorâmica consegue baixar.
       security:
         - bearerAuth: []
       parameters:
