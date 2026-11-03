@@ -82,7 +82,11 @@ def stitch(folder):
     hugin(folder, "nona", "-m", "TIFF_m", "-o", "part_", "project.pto")
 
     parts = sorted(glob.glob(os.path.join(folder, "part_*.tif")))
-    hugin(folder, "enblend", "-w", "-o", "pano.tif", *[os.path.basename(p) for p in parts])
+    part_names = [os.path.basename(p) for p in parts]
+    try:
+        hugin(folder, "enblend", "-w", "-o", "pano.tif", *part_names)
+    except subprocess.CalledProcessError:
+        hugin(folder, "enblend", "-w", "--no-optimize", "-o", "pano.tif", *part_names)
 
     tif_path = os.path.join(folder, "pano.tif")
     jpg_path = os.path.join(folder, "pano.jpg")
