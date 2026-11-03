@@ -158,7 +158,8 @@ def refine_poses(pto_path):
         np.add.at(g, left, (weight @ change[:, :, None])[:, :, 0])
         np.add.at(g, right, -(weight @ change[:, :, None])[:, :, 0])
 
-        step = np.linalg.solve(H.transpose(0, 2, 1, 3).reshape(3 * n, 3 * n), -g.ravel()).reshape(n, 3)
+        step = np.zeros((n, 3))
+        step[:, 2] = np.linalg.solve(H[:, :, 2, 2], -g[:, 2])
         largest = np.degrees(np.linalg.norm(step, axis=1).max())
         if largest > MAX_STEP_DEG:
             step *= MAX_STEP_DEG / largest
