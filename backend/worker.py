@@ -6,6 +6,8 @@ from app import STORAGE_DIR, get_db
 from stitch import HUGIN_IMAGE, stitch
 
 POLL_SECONDS = 5
+KEEP_INPUT_DAYS = 7
+CLEANUP_SECONDS = 3600
 
 def docker_ready():
     try:
@@ -50,7 +52,6 @@ def process(panorama_id):
     folder = os.path.join(STORAGE_DIR, str(panorama_id))
     try:
         stitch(folder)
-        os.remove(os.path.join(folder, "input.zip"))
     except subprocess.CalledProcessError as error:
         print(f"Panorâmica {panorama_id}: o Hugin falhou\n{error.stderr}", flush=True)
         set_status(panorama_id, "failed")
@@ -63,6 +64,16 @@ def process(panorama_id):
     set_status(panorama_id, "done")
     print(f"Panorâmica {panorama_id}: pronta em {time.time() - started:.0f} s", flush=True)
 
+def delete_old_inputs():
+    if not os.path.isdir(STORAGE_DIR):
+        return
+    limit = time.time() - KEEP_INPUT_DAYS * 86400
+    for name in os.listdir(STORAGE_DIR):
+        pano = os.path.join(STORAGE_DIR, name, "pano.jpg")
+        archive = os.path.join(STORAGE_DIR, name, "input.zip")
+        if os.path.exists(archive) and os.path.exists(pano) and os.path.getmtime(pano) < limit:
+            os.remove(archive)
+
 def main():
     if not docker_ready():
         print(f"O Docker não está rodando ou a imagem {HUGIN_IMAGE} não existe. Abra o Docker Desktop e tente de novo.")
@@ -70,7 +81,11 @@ def main():
 
     reset_interrupted()
     print("Worker rodando. Ctrl+C para parar.", flush=True)
+    last_cleanup = 0
     while True:
+        if time.time() - last_cleanup >= CLEANUP_SECONDS:
+            delete_old_inputs()
+            last_cleanup = time.time()
         panorama_id = claim_next()
         if panorama_id is None:
             time.sleep(POLL_SECONDS)
