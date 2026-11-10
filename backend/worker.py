@@ -1,8 +1,10 @@
+import glob
 import os
+import shutil
 import subprocess
 import time
 
-from app import STORAGE_DIR, get_db
+from app import STORAGE_DIR, UPLOAD_DIR, get_db
 from stitch import HUGIN_IMAGE, stitch
 
 POLL_SECONDS = 5
@@ -74,6 +76,12 @@ def delete_old_inputs():
         if os.path.exists(archive) and os.path.exists(pano) and os.path.getmtime(pano) < limit:
             os.remove(archive)
 
+def delete_stale_uploads():
+    limit = time.time() - 86400
+    for folder in glob.glob(os.path.join(UPLOAD_DIR, "*", "*")):
+        if os.path.getmtime(folder) < limit:
+            shutil.rmtree(folder, ignore_errors=True)
+
 def main():
     if not docker_ready():
         print(f"O Docker não está rodando ou a imagem {HUGIN_IMAGE} não existe. Abra o Docker Desktop e tente de novo.")
@@ -85,6 +93,7 @@ def main():
     while True:
         if time.time() - last_cleanup >= CLEANUP_SECONDS:
             delete_old_inputs()
+            delete_stale_uploads()
             last_cleanup = time.time()
         panorama_id = claim_next()
         if panorama_id is None:

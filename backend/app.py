@@ -1,4 +1,6 @@
 import os
+import re
+import shutil
 import sqlite3
 import zipfile
 from datetime import datetime, timedelta, timezone
@@ -13,7 +15,11 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "app.db")
 SCHEMA_PATH = os.path.join(BASE_DIR, "schema.sql")
 STORAGE_DIR = os.path.join(BASE_DIR, "storage")
+UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 MAX_UPLOAD_BYTES = 300 * 1024 * 1024
+MAX_PART_BYTES = 20 * 1024 * 1024
+MAX_PARTS = 1000
+UPLOAD_ID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only")
 
@@ -145,6 +151,20 @@ def me():
 
     return jsonify(dict(user))
 
+def add_panorama(user_id):
+    conn = get_db()
+    try:
+        cursor = conn.execute(
+            "INSERT INTO panoramas (user_id) VALUES (?)",
+            (user_id,),
+        )
+        conn.commit()
+        return cursor.lastrowid
+    except sqlite3.IntegrityError:
+        return None
+    finally:
+        conn.close()
+
 @app.post("/api/panoramas")
 def create_panorama():
     user_id = current_user_id()
@@ -159,22 +179,88 @@ def create_panorama():
         return jsonify({"error": "O arquivo precisa ser um ZIP"}), 400
     file.stream.seek(0)
 
-    conn = get_db()
-    try:
-        cursor = conn.execute(
-            "INSERT INTO panoramas (user_id) VALUES (?)",
-            (user_id,),
-        )
-        conn.commit()
-        panorama_id = cursor.lastrowid
-    except sqlite3.IntegrityError:
+    panorama_id = add_panorama(user_id)
+    if panorama_id is None:
         return jsonify({"error": "Não autenticado"}), 401
-    finally:
-        conn.close()
 
     folder = os.path.join(STORAGE_DIR, str(panorama_id))
     os.makedirs(folder, exist_ok=True)
     file.save(os.path.join(folder, "input.zip"))
+
+    return jsonify({"id": panorama_id, "status": "pending"}), 201
+
+def upload_folder(user_id, upload_id):
+    if not UPLOAD_ID.match(upload_id):
+        return None
+    return os.path.join(UPLOAD_DIR, str(user_id), upload_id)
+
+def part_path(folder, index):
+    return os.path.join(folder, f"part_{index:04d}")
+
+@app.put("/api/uploads/<upload_id>/parts/<int:index>")
+def upload_part(upload_id, index):
+    user_id = current_user_id()
+    if user_id is None:
+        return jsonify({"error": "Não autenticado"}), 401
+
+    folder = upload_folder(user_id, upload_id)
+    if folder is None or index >= MAX_PARTS:
+        return jsonify({"error": "Envio inválido"}), 400
+
+    size = request.content_length
+    if size is None:
+        return jsonify({"error": "Envie o tamanho da parte"}), 411
+
+    os.makedirs(folder, exist_ok=True)
+    path = part_path(folder, index)
+    others = sum(
+        os.path.getsize(os.path.join(folder, name))
+        for name in os.listdir(folder)
+        if name.startswith("part_") and not name.endswith(".tmp") and os.path.join(folder, name) != path
+    )
+    if size > MAX_PART_BYTES or others + size > MAX_UPLOAD_BYTES:
+        return jsonify({"error": "Arquivo maior que 300 MB"}), 413
+
+    with open(path + ".tmp", "wb") as f:
+        shutil.copyfileobj(request.stream, f)
+    os.replace(path + ".tmp", path)
+
+    return "", 204
+
+@app.post("/api/uploads/<upload_id>/finish")
+def finish_upload(upload_id):
+    user_id = current_user_id()
+    if user_id is None:
+        return jsonify({"error": "Não autenticado"}), 401
+
+    folder = upload_folder(user_id, upload_id)
+    count = (request.get_json(silent=True) or {}).get("parts")
+    if folder is None or type(count) is not int or not 0 < count <= MAX_PARTS:
+        return jsonify({"error": "Envio inválido"}), 400
+
+    parts = [part_path(folder, i) for i in range(count)]
+    if not all(os.path.exists(part) for part in parts):
+        return jsonify({"error": "Faltam partes do arquivo"}), 409
+
+    archive = os.path.join(folder, "input.zip")
+    with open(archive, "wb") as out:
+        for part in parts:
+            with open(part, "rb") as f:
+                shutil.copyfileobj(f, out)
+
+    if not zipfile.is_zipfile(archive):
+        shutil.rmtree(folder, ignore_errors=True)
+        return jsonify({"error": "O arquivo precisa ser um ZIP"}), 400
+
+    panorama_id = add_panorama(user_id)
+    if panorama_id is None:
+        shutil.rmtree(folder, ignore_errors=True)
+        return jsonify({"error": "Não autenticado"}), 401
+
+    target = os.path.join(STORAGE_DIR, str(panorama_id))
+    os.makedirs(target, exist_ok=True)
+    os.replace(archive, os.path.join(target, "input.zip"))
+    shutil.rmtree(folder, ignore_errors=True)
 
     return jsonify({"id": panorama_id, "status": "pending"}), 201
 

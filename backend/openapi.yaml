@@ -166,6 +166,100 @@ paths:
                 $ref: "#/components/schemas/Error"
         "413":
           description: Arquivo maior que 300 MB
+  /api/uploads/{upload_id}/parts/{index}:
+    put:
+      tags: [Panorâmicas]
+      summary: Envia uma parte do ZIP
+      description: O app divide o ZIP em partes de até 20 MB, porque a Cloudflare recusa requisições acima de 100 MB. O `upload_id` é um UUID gerado pelo app e `index` começa em 0.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: upload_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: index
+          in: path
+          required: true
+          schema:
+            type: integer
+            example: 0
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "204":
+          description: Parte recebida
+        "400":
+          description: upload_id ou index inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Token ausente, inválido ou vencido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "413":
+          description: Parte maior que 20 MB ou soma das partes maior que 300 MB
+  /api/uploads/{upload_id}/finish:
+    post:
+      tags: [Panorâmicas]
+      summary: Junta as partes e registra a panorâmica
+      description: Junta as partes na ordem, confere se o resultado é um ZIP e registra a panorâmica como pendente.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: upload_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [parts]
+              properties:
+                parts:
+                  type: integer
+                  example: 14
+      responses:
+        "201":
+          description: ZIP recebido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Panorama"
+        "400":
+          description: Envio inválido ou arquivo que não é um ZIP
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Token ausente, inválido ou vencido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Faltam partes do arquivo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/panoramas/{id}/image:
     get:
       tags: [Panorâmicas]
