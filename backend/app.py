@@ -9,6 +9,9 @@ import jwt
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from flask_swagger_ui import get_swaggerui_blueprint
+from google.auth import exceptions as google_exceptions
+from google.auth.transport import requests as google_requests
+from google.oauth2 import id_token
 from werkzeug.security import check_password_hash, generate_password_hash
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -22,6 +25,7 @@ MAX_PARTS = 1000
 UPLOAD_ID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only")
+GOOGLE_CLIENT_ID = "707159799755-3juiktrdcn90ir50aon2o4pm7itfu229.apps.googleusercontent.com"
 
 ALLOWED_ORIGINS = [
     "https://rpfacco.github.io",
@@ -109,16 +113,70 @@ def login():
     if user is None or not check_password_hash(user["password_hash"], password):
         return jsonify({"error": "Email ou senha incorretos"}), 401
 
-    token = jwt.encode(
+    return jsonify({"token": make_token(user["id"])})
+
+def make_token(user_id):
+    return jwt.encode(
         {
-            "sub": str(user["id"]),
+            "sub": str(user_id),
             "exp": datetime.now(timezone.utc) + timedelta(hours=24),
         },
         SECRET_KEY,
         algorithm="HS256",
     )
 
-    return jsonify({"token": token})
+@app.post("/api/auth/google")
+def google_login():
+    data = request.get_json(silent=True) or {}
+    credential = data.get("credential")
+
+    if type(credential) is not str:
+        return jsonify({"error": "Envie o credential do Google"}), 400
+
+    try:
+        info = id_token.verify_oauth2_token(
+            credential,
+            google_requests.Request(),
+            GOOGLE_CLIENT_ID,
+            clock_skew_in_seconds=10,
+        )
+    except google_exceptions.TransportError:
+        return jsonify({"error": "Não foi possível falar com o Google"}), 502
+    except (ValueError, google_exceptions.GoogleAuthError):
+        return jsonify({"error": "Login com Google inválido"}), 401
+
+    if not info.get("email_verified"):
+        return jsonify({"error": "O email da conta Google não está verificado"}), 401
+
+    email = info["email"].strip().lower()
+
+    conn = get_db()
+    try:
+        account = conn.execute(
+            "SELECT user_id FROM google_accounts WHERE sub = ?",
+            (info["sub"],),
+        ).fetchone()
+
+        if account is not None:
+            user_id = account["user_id"]
+        else:
+            try:
+                cursor = conn.execute(
+                    "INSERT INTO users (email, password_hash) VALUES (?, '')",
+                    (email,),
+                )
+            except sqlite3.IntegrityError:
+                return jsonify({"error": "Este email já tem conta com senha"}), 409
+            user_id = cursor.lastrowid
+            conn.execute(
+                "INSERT INTO google_accounts (sub, user_id) VALUES (?, ?)",
+                (info["sub"], user_id),
+            )
+            conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({"token": make_token(user_id)})
 
 def current_user_id():
     header = request.headers.get("Authorization", "")

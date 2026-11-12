@@ -87,6 +87,55 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/auth/google:
+    post:
+      tags: [Autenticação]
+      summary: Faz login com Google e devolve o token
+      description: Recebe o ID token que o botão do Google entrega ao front (`credential`). Na primeira vez cria o usuário, nas próximas entra na mesma conta.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [credential]
+              properties:
+                credential:
+                  type: string
+      responses:
+        "200":
+          description: Login aceito
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+        "400":
+          description: Faltou o credential
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: ID token inválido, vencido, de outro app ou com email não verificado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: O email já tem conta com senha
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: O backend não conseguiu falar com o Google
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/me:
     get:
       tags: [Autenticação]

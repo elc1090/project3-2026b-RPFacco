@@ -60,9 +60,8 @@ Substitua este trecho por uma lista detalhada dos ambientes/ferramentas de desen
 
 ## Referências e créditos
 
-Substitua este trecho por uma lista bem detalhada de todo material consultado para ajudar no projeto, por exemplo:  URLs de vídeos ou outro material consultado, créditos para colegas que colaboraram, geradores de código, etc.
-- ...
-- ...
+- https://www.youtube.com/watch?v=SwCA0K3gy90 - Vídeo tutorial: Adicionando Autenticação com o Google
+- https://github.com/elc1090/demo-auth-profile - Prática no codespaces: conta com senha ou login com Google
 
 
 
