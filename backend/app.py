@@ -15,10 +15,10 @@ from google.oauth2 import id_token
 from werkzeug.security import check_password_hash, generate_password_hash
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "app.db")
+DB_PATH = os.environ.get("DB_PATH", os.path.join(BASE_DIR, "app.db"))
+STORAGE_DIR = os.environ.get("STORAGE_DIR", os.path.join(BASE_DIR, "storage"))
+UPLOAD_DIR = os.environ.get("UPLOAD_DIR", os.path.join(BASE_DIR, "uploads"))
 SCHEMA_PATH = os.path.join(BASE_DIR, "schema.sql")
-STORAGE_DIR = os.path.join(BASE_DIR, "storage")
-UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 MAX_UPLOAD_BYTES = 300 * 1024 * 1024
 MAX_PART_BYTES = 20 * 1024 * 1024
 MAX_PARTS = 1000
