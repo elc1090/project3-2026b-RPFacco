@@ -34,3 +34,20 @@ def test_register_invalid_email(client, email):
     )
 
     assert response.status_code == 400
+
+def test_login_token_opens_me(client):
+    client.post(
+        "/api/register",
+        json={"email": "ana@example.com", "password": "senha-segura"},
+    )
+
+    login = client.post(
+        "/api/login",
+        json={"email": "ana@example.com", "password": "senha-segura"},
+    )
+    token = login.get_json()["token"]
+    response = client.get("/api/me", headers={"Authorization": f"Bearer {token}"})
+
+    assert login.status_code == 200
+    assert response.status_code == 200
+    assert response.get_json()["email"] == "ana@example.com"
