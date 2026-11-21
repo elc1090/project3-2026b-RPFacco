@@ -51,3 +51,22 @@ def test_login_token_opens_me(client):
     assert login.status_code == 200
     assert response.status_code == 200
     assert response.get_json()["email"] == "ana@example.com"
+
+def test_login_same_answer_for_wrong_password_and_unknown_email(client):
+    client.post(
+        "/api/register",
+        json={"email": "ana@example.com", "password": "senha-segura"},
+    )
+
+    wrong_password = client.post(
+        "/api/login",
+        json={"email": "ana@example.com", "password": "senha-errada"},
+    )
+    unknown_email = client.post(
+        "/api/login",
+        json={"email": "ninguem@example.com", "password": "senha-segura"},
+    )
+
+    assert wrong_password.status_code == 401
+    assert unknown_email.status_code == 401
+    assert wrong_password.get_json() == unknown_email.get_json()
