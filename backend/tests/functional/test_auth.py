@@ -1,3 +1,6 @@
+from datetime import datetime, timedelta, timezone
+
+import jwt
 import pytest
 
 def test_register_creates_user(client):
@@ -73,5 +76,20 @@ def test_login_same_answer_for_wrong_password_and_unknown_email(client):
 
 def test_me_without_token(client):
     response = client.get("/api/me")
+
+    assert response.status_code == 401
+
+def test_me_rejects_token_signed_with_other_key(client):
+    client.post(
+        "/api/register",
+        json={"email": "ana@example.com", "password": "senha-segura"},
+    )
+    forged = jwt.encode(
+        {"sub": "1", "exp": datetime.now(timezone.utc) + timedelta(hours=1)},
+        "chave-de-quem-quer-se-passar-pela-ana",
+        algorithm="HS256",
+    )
+
+    response = client.get("/api/me", headers={"Authorization": f"Bearer {forged}"})
 
     assert response.status_code == 401
