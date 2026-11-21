@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 import jwt
 import pytest
+from google.oauth2 import id_token
 
 def test_register_creates_user(client):
     response = client.post(
@@ -93,3 +94,17 @@ def test_me_rejects_token_signed_with_other_key(client):
     response = client.get("/api/me", headers={"Authorization": f"Bearer {forged}"})
 
     assert response.status_code == 401
+
+def test_google_login_creates_account(client, monkeypatch):
+    def fake_google(credential, request, audience, **kwargs):
+        assert credential == "credential-do-google"
+        return {"sub": "google-123", "email": "Ana@Gmail.com", "email_verified": True}
+
+    monkeypatch.setattr(id_token, "verify_oauth2_token", fake_google)
+
+    login = client.post("/api/auth/google", json={"credential": "credential-do-google"})
+    token = login.get_json()["token"]
+    response = client.get("/api/me", headers={"Authorization": f"Bearer {token}"})
+
+    assert login.status_code == 200
+    assert response.get_json()["email"] == "ana@gmail.com"
