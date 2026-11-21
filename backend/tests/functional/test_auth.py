@@ -70,3 +70,8 @@ def test_login_same_answer_for_wrong_password_and_unknown_email(client):
     assert wrong_password.status_code == 401
     assert unknown_email.status_code == 401
     assert wrong_password.get_json() == unknown_email.get_json()
+
+def test_me_without_token(client):
+    response = client.get("/api/me")
+
+    assert response.status_code == 401
