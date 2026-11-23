@@ -66,27 +66,35 @@ def pose_args(poses):
         values.append(f"r{i}={roll:.4f}")
     return "--set=" + ",".join(values)
 
-def stitch(folder):
+class Cancelled(Exception):
+    """The panorama was cancelled while it was being stitched."""
+
+def stitch(folder, cancelled=lambda: False):
+    def step(*args):
+        if cancelled():
+            raise Cancelled()
+        return hugin(folder, *args)
+
     photos, names = extract_photos(folder)
     fov = photos[0]["fov"]["horizontal"]
     project = os.path.join(folder, "project.pto")
 
-    hugin(folder, "pto_gen", "-p", "0", "-f", f"{fov:.4f}", "-o", "project.pto", *names)
-    hugin(folder, "pto_var", pose_args(sensor_poses(photos)), "-o", "project.pto", "project.pto")
-    hugin(
-        folder, "pano_modify", "--projection=2", "--fov=360x180",
+    step("pto_gen", "-p", "0", "-f", f"{fov:.4f}", "-o", "project.pto", *names)
+    step("pto_var", pose_args(sensor_poses(photos)), "-o", "project.pto", "project.pto")
+    step(
+        "pano_modify", "--projection=2", "--fov=360x180",
         f"--canvas={PANO_WIDTH}x{PANO_WIDTH // 2}", "-o", "project.pto", "project.pto",
     )
-    hugin(folder, "cpfind", "--prealigned", f"--ncores={THREADS}", "-o", "project.pto", "project.pto")
-    hugin(folder, "pto_var", pose_args(refine_poses(project)), "-o", "project.pto", "project.pto")
-    hugin(folder, "nona", "-m", "TIFF_m", "-o", "part_", "project.pto")
+    step("cpfind", "--prealigned", f"--ncores={THREADS}", "-o", "project.pto", "project.pto")
+    step("pto_var", pose_args(refine_poses(project)), "-o", "project.pto", "project.pto")
+    step("nona", "-m", "TIFF_m", "-o", "part_", "project.pto")
 
     parts = sorted(glob.glob(os.path.join(folder, "part_*.tif")))
     part_names = [os.path.basename(p) for p in parts]
     try:
-        hugin(folder, "enblend", "-w", "-o", "pano.tif", *part_names)
+        step("enblend", "-w", "-o", "pano.tif", *part_names)
     except subprocess.CalledProcessError:
-        hugin(folder, "enblend", "-w", "--no-optimize", "-o", "pano.tif", *part_names)
+        step("enblend", "-w", "--no-optimize", "-o", "pano.tif", *part_names)
 
     tif_path = os.path.join(folder, "pano.tif")
     jpg_path = os.path.join(folder, "pano.jpg")

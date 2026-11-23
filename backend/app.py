@@ -333,7 +333,7 @@ def list_panoramas():
         """
         SELECT id, status, created_at
         FROM panoramas
-        WHERE user_id = ?
+        WHERE user_id = ? AND status != 'cancelled'
         ORDER BY id DESC
         """,
         (user_id,),
@@ -366,6 +366,31 @@ def panorama_image(panorama_id):
         return jsonify({"error": "Arquivo da panorâmica não encontrado"}), 404
 
     return send_from_directory(folder, "pano.jpg", mimetype="image/jpeg")
+
+@app.delete("/api/panoramas/<int:panorama_id>")
+def cancel_panorama(panorama_id):
+    user_id = current_user_id()
+    if user_id is None:
+        return jsonify({"error": "Não autenticado"}), 401
+
+    conn = get_db()
+    queued = conn.execute(
+        "UPDATE panoramas SET status = 'cancelled' WHERE id = ? AND user_id = ? AND status = 'pending'",
+        (panorama_id, user_id),
+    ).rowcount
+    stitching = conn.execute(
+        "UPDATE panoramas SET status = 'cancelled' WHERE id = ? AND user_id = ? AND status = 'processing'",
+        (panorama_id, user_id),
+    ).rowcount
+    conn.commit()
+    conn.close()
+
+    if not queued and not stitching:
+        return jsonify({"error": "Não há costura para cancelar"}), 404
+
+    if queued:
+        shutil.rmtree(os.path.join(STORAGE_DIR, str(panorama_id)), ignore_errors=True)
+    return "", 204
 
 if __name__ == "__main__":
     app.run(debug=True)

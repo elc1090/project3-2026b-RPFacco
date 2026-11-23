@@ -5,7 +5,7 @@ import subprocess
 import time
 
 from app import STORAGE_DIR, UPLOAD_DIR, get_db
-from stitch import HUGIN_IMAGE, stitch
+from stitch import HUGIN_IMAGE, Cancelled, stitch
 
 POLL_SECONDS = 5
 KEEP_INPUT_DAYS = 7
@@ -44,26 +44,47 @@ def claim_next():
 
 def set_status(panorama_id, status):
     conn = get_db()
-    conn.execute("UPDATE panoramas SET status = ? WHERE id = ?", (status, panorama_id))
+    cursor = conn.execute(
+        "UPDATE panoramas SET status = ? WHERE id = ? AND status = 'processing'",
+        (status, panorama_id),
+    )
     conn.commit()
     conn.close()
+    return cursor.rowcount == 1
+
+def is_cancelled(panorama_id):
+    conn = get_db()
+    row = conn.execute("SELECT status FROM panoramas WHERE id = ?", (panorama_id,)).fetchone()
+    conn.close()
+    return row is None or row["status"] == "cancelled"
+
+def discard(panorama_id, folder):
+    shutil.rmtree(folder, ignore_errors=True)
+    print(f"Panorâmica {panorama_id}: cancelada", flush=True)
 
 def process(panorama_id):
     print(f"Panorâmica {panorama_id}: costurando...", flush=True)
     started = time.time()
     folder = os.path.join(STORAGE_DIR, str(panorama_id))
     try:
-        stitch(folder)
+        stitch(folder, cancelled=lambda: is_cancelled(panorama_id))
+    except Cancelled:
+        discard(panorama_id, folder)
+        return
     except subprocess.CalledProcessError as error:
         print(f"Panorâmica {panorama_id}: o Hugin falhou\n{error.stderr}", flush=True)
-        set_status(panorama_id, "failed")
+        if not set_status(panorama_id, "failed"):
+            discard(panorama_id, folder)
         return
     except Exception as error:
         print(f"Panorâmica {panorama_id}: falhou ({error})", flush=True)
-        set_status(panorama_id, "failed")
+        if not set_status(panorama_id, "failed"):
+            discard(panorama_id, folder)
         return
 
-    set_status(panorama_id, "done")
+    if not set_status(panorama_id, "done"):
+        discard(panorama_id, folder)
+        return
     print(f"Panorâmica {panorama_id}: pronta em {time.time() - started:.0f} s", flush=True)
 
 def delete_old_inputs():
