@@ -1,6 +1,6 @@
 # Projeto: Aplicação com cadastro e autenticação de usuários integrando frontend, backend e persistência
 
-![GIF](gif_360.webp)
+![GIF](gif_360_antigo.webp)
 
 
 
