@@ -3,6 +3,7 @@ import os
 import shutil
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 from app import STORAGE_DIR, UPLOAD_DIR, get_db
 from stitch import HUGIN_IMAGE, Cancelled, stitch
@@ -10,6 +11,7 @@ from stitch import HUGIN_IMAGE, Cancelled, stitch
 POLL_SECONDS = 5
 KEEP_INPUT_DAYS = 7
 CLEANUP_SECONDS = 3600
+SLOTS = int(os.environ.get("STITCH_SLOTS", "1"))
 
 def docker_ready():
     try:
@@ -111,16 +113,22 @@ def main():
     reset_interrupted()
     print("Worker rodando. Ctrl+C para parar.", flush=True)
     last_cleanup = 0
-    while True:
-        if time.time() - last_cleanup >= CLEANUP_SECONDS:
-            delete_old_inputs()
-            delete_stale_uploads()
-            last_cleanup = time.time()
-        panorama_id = claim_next()
-        if panorama_id is None:
-            time.sleep(POLL_SECONDS)
-            continue
-        process(panorama_id)
+    running = set()
+    with ThreadPoolExecutor(SLOTS) as pool:
+        while True:
+            if time.time() - last_cleanup >= CLEANUP_SECONDS:
+                delete_old_inputs()
+                delete_stale_uploads()
+                last_cleanup = time.time()
+            done = {job for job in running if job.done()}
+            for job in done:
+                job.result()
+            running -= done
+            panorama_id = claim_next() if len(running) < SLOTS else None
+            if panorama_id is None:
+                time.sleep(POLL_SECONDS)
+                continue
+            running.add(pool.submit(process, panorama_id))
 
 if __name__ == "__main__":
     main()
