@@ -2,6 +2,7 @@ import os
 import re
 import shutil
 import sqlite3
+import uuid
 import zipfile
 from datetime import datetime, timedelta, timezone
 
@@ -279,9 +280,10 @@ def upload_part(upload_id, index):
     if size > MAX_PART_BYTES or others + size > MAX_UPLOAD_BYTES:
         return jsonify({"error": "Arquivo maior que 300 MB"}), 413
 
-    with open(path + ".tmp", "wb") as f:
+    temp = f"{path}.{uuid.uuid4().hex}.tmp"
+    with open(temp, "wb") as f:
         shutil.copyfileobj(request.stream, f)
-    os.replace(path + ".tmp", path)
+    os.replace(temp, path)
 
     return "", 204
 
